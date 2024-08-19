@@ -1,124 +1,132 @@
 #include <Servo.h>
 
- 
+// Pin definitions
 #define SERVO_PIN          3
 #define TRIGGER_PIN        2
 #define LED_PIN           13
 #define EYE1_PIN           7
 #define EYE2_PIN           8
 #define SOUND_PIN          4
-#define REFRESH_PERIOD_MS 20
 
-int pos = 0;    // variable to store the servo position 
-int speed = 1;
-int moveInterval = 5;
-int maxPos = 150;
-int minPos = 30;
-volatile byte active = 0;
-volatile byte shouldBlink = 0;
-volatile byte shouldBlinkTwice = 0;
-volatile byte shouldTwitch = 0;
-volatile byte shouldCrow = 0;
+// Constants
+#define REFRESH_PERIOD_MS  20
+#define MAX_POS           150
+#define MIN_POS            30
+#define MOVE_INTERVAL       5
+#define SERVO_SPEED         1
 
+// Global variables
 Servo myservo;
+int pos = 0;    // Current servo position
+volatile bool active = false;
 
-void triggerIsr() {
-  active=1;
-}
- 
+// Function prototypes
+void triggerIsr();
+void birdMove(int dest);
+void maybeTwitch();
+void maybeBlink();
+void blink();
+void makeSound();
+
 void setup() 
-{ 
+{
+  // Initialize pins
   pinMode(SOUND_PIN, OUTPUT);
   digitalWrite(SOUND_PIN, LOW);
   pinMode(EYE1_PIN, OUTPUT);
   pinMode(EYE2_PIN, OUTPUT);
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
+  
+  // Attach interrupt for trigger
   attachInterrupt(digitalPinToInterrupt(TRIGGER_PIN), triggerIsr, RISING);
+  
+  // Attach servo
   myservo.attach(SERVO_PIN);
-} 
- 
+  
+  // Initialize random seed
+  randomSeed(analogRead(0));
+  
+  // Serial for debugging (optional)
+  Serial.begin(9600);
+}
+
 void loop() 
-{ 
-   if (active) {
-    for (int i=0; i<10; i++){
-      shouldBlink = random(0, 1);
-      if (shouldBlink==0) {
-        digitalWrite(EYE1_PIN, HIGH);
-        digitalWrite(EYE2_PIN, HIGH);
-      }
-      shouldBlinkTwice = random(0, 5);
-      shouldCrow = random(0, 10);
-      shouldTwitch = random(0, 2);
-      int target = random(minPos, maxPos);
-      birdMove (target);
-      if (shouldCrow==0){
-        digitalWrite(SOUND_PIN, HIGH); 
-      }
-      if (shouldBlinkTwice=0) {
-        digitalWrite(EYE1_PIN, LOW);
-        digitalWrite(EYE2_PIN, LOW);
-      }
-      maybeTwitch(); 
-      digitalWrite(SOUND_PIN, LOW);
+{
+  if (active) {
+    for (int i = 0; i < 10; i++) {
+      int target = random(MIN_POS, MAX_POS);
+      
+      // Perform bird actions
+      birdMove(target);
+      maybeBlink();
+      maybeTwitch();
+      makeSound();
+      
       delay(500);
     }
+    
+    // Reset eyes and active state
     digitalWrite(EYE1_PIN, LOW);
     digitalWrite(EYE2_PIN, LOW);
-    active=0;
-  }
-} 
-
-void birdMove (int dest) {
-  int start = myservo.read();
-
-  if (dest - start > 0) {
-    for (pos = start; pos <= dest; pos += speed) {
-      myservo.write(pos); // tell servo to go to position in variable 'pos'
-      delay(moveInterval);
-    }
-  }
-  else {
-    for (pos = start; pos >= dest; pos -= speed) {
-      myservo.write(pos);              // tell servo to go to position in variable 'pos'
-      delay(moveInterval);
-    }
+    active = false;
   }
 }
 
-void maybeTwitch () {
-  int shouldTwitch = random(1, 3);
-  if (shouldTwitch == 3) {
-    int timesTwitch = random(3, 5);
-    int twitchCount = 0;
-    for (twitchCount = 0; twitchCount <= timesTwitch; twitchCount += 1) {
-      int min = pos - 10;
-      int max = pos + 10;
+// Interrupt Service Routine for trigger
+void triggerIsr() {
+  active = true;
+}
 
-      if (min < minPos) {
-        min = minPos;
-      }
-      if (max > maxPos) {
-        max = maxPos;
-      }
-      int target = random(min, max);
+// Move the bird (servo) to a target position
+void birdMove(int dest) {
+  int start = myservo.read();
+  int direction = (dest > start) ? 1 : -1;
+  
+  for (pos = start; pos != dest; pos += direction * SERVO_SPEED) {
+    myservo.write(pos);
+    delay(MOVE_INTERVAL);
+  }
+  myservo.write(dest); // Ensure final position is reached
+}
+
+// Random twitching behavior
+void maybeTwitch() {
+  if (random(3) == 0) { // 1 in 3 chance to twitch
+    int timesTwitch = random(3, 6);
+    for (int i = 0; i < timesTwitch; i++) {
+      int currentPos = myservo.read();
+      int twitchAmount = random(-10, 11);
+      int target = constrain(currentPos + twitchAmount, MIN_POS, MAX_POS);
       birdMove(target);
     }
   }
 }
 
-void maybeBlink () {
-  int shouldBLink = random(0, 1);
-  if (shouldBLink == 0) {
-    delay(1000);
+// Random blinking behavior
+void maybeBlink() {
+  if (random(2) == 0) { // 50% chance to blink
     blink();
-    int blinkTwice = random(1, 6);
-    if (blinkTwice == 1) {
-      delay(500);
+    if (random(5) == 0) { // 20% chance to blink twice
+      delay(200);
       blink();
     }
   }
 }
 
-void blink () {
-  delay(300);
+// Blink eyes
+void blink() {
+  digitalWrite(EYE1_PIN, HIGH);
+  digitalWrite(EYE2_PIN, HIGH);
+  delay(100);
+  digitalWrite(EYE1_PIN, LOW);
+  digitalWrite(EYE2_PIN, LOW);
+}
+
+// Make sound
+void makeSound() {
+  if (random(10) == 0) { // 10% chance to make sound
+    digitalWrite(SOUND_PIN, HIGH);
+    delay(random(100, 500)); // Random duration sound
+    digitalWrite(SOUND_PIN, LOW);
+  }
 }
